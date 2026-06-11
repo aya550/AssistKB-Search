@@ -1,45 +1,105 @@
 """Ingestion : corpus brut (PDF/HTML/JSON/TXT) -> chunks + metadonnees.
 
-ROLE : R1 (Data / Ingestion).   ===> A COMPLETER PAR R1 <===
+ROLE : R1 (Data / Ingestion).
 
 Lance   : python -m app.ingest
 Produit : corpus/chunks.jsonl  (une ligne JSON par chunk)
 
-L'ossature (parcours des fichiers, ecriture du .jsonl) est fournie ci-dessous.
-A toi d'implementer le coeur (les `TODO R1`) :
-  - extract_text() : extraction robuste selon le format (PDF/HTML/JSON/TXT) ;
-  - chunk_text()   : strategie de decoupage (taille / recouvrement) a justifier ;
-  - metadonnees    : source au minimum (+ position, + bonus langue via langdetect).
-
-Une version de reference complete t'est fournie HORS-GIT dans _reference/ingest.py :
-comprends-la, adapte-la, puis commit TA version sous TON identite.
+Strategie de chunking : fenetres de CHUNK_SIZE caracteres avec CHUNK_OVERLAP
+de recouvrement. Un recouvrement de ~15 % (120/800) evite de couper une phrase
+a cheval entre deux chunks sans gonfler le volume. Taille de 800 chars = ~150
+tokens, raisonnable pour all-MiniLM-L6-v2 (limite 256 tokens).
 """
 import json
+import re
 from pathlib import Path
+
+try:
+    from langdetect import detect as _lang_detect
+    from langdetect.lang_detect_exception import LangDetectException
+except ImportError:
+    _lang_detect = None  # type: ignore[assignment]
+    LangDetectException = Exception
+
+
+def detect_lang(text: str) -> str:
+    if _lang_detect is None or not text:
+        return "unknown"
+    try:
+        return _lang_detect(text[:500])
+    except LangDetectException:
+        return "unknown"
 
 from . import config
 
 
-def extract_text(path: Path) -> str:
-    """Extrait le texte brut d'un fichier selon son extension.
+def _flatten_json(obj, sep=" ") -> str:
+    """Extrait recursivement toutes les valeurs string d'un objet JSON."""
+    parts: list[str] = []
+    if isinstance(obj, dict):
+        for v in obj.values():
+            parts.append(_flatten_json(v, sep))
+    elif isinstance(obj, list):
+        for item in obj:
+            parts.append(_flatten_json(item, sep))
+    elif isinstance(obj, str):
+        parts.append(obj)
+    return sep.join(p for p in parts if p)
 
-    TODO R1 : gerer .pdf (pypdf), .html/.htm (BeautifulSoup, retirer script/style),
-    .json (aplatir les chaines) et le fallback texte. Tolerer l'encodage
-    (errors="ignore") et ne JAMAIS planter sur un fichier corrompu (try/except).
-    """
-    raise NotImplementedError("TODO R1 : implementer extract_text()")
+
+def extract_text(path: Path) -> str:
+    """Extrait le texte brut d'un fichier selon son extension."""
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".pdf":
+            import pypdf  # noqa: PLC0415
+            reader = pypdf.PdfReader(str(path))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n".join(pages)
+
+        if suffix in {".html", ".htm"}:
+            from bs4 import BeautifulSoup  # noqa: PLC0415
+            raw = path.read_text(encoding="utf-8", errors="ignore")
+            soup = BeautifulSoup(raw, "html.parser")
+            for tag in soup(["script", "style", "nav", "footer", "head"]):
+                tag.decompose()
+            return soup.get_text(separator="\n")
+
+        if suffix == ".json":
+            raw = path.read_text(encoding="utf-8", errors="ignore")
+            obj = json.loads(raw)
+            return _flatten_json(obj)
+
+        # fallback : fichier texte brut
+        return path.read_text(encoding="utf-8", errors="ignore")
+
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ingest] erreur lecture {path} : {exc}")
+        return ""
 
 
 def chunk_text(text: str, size: int | None = None, overlap: int | None = None) -> list[str]:
-    """Decoupe le texte en chunks avec recouvrement.
-
-    TODO R1 : normaliser les espaces puis decouper en fenetres de `size`
-    caracteres avec `overlap` de recouvrement (depart : 800 / 120, regle dans .env).
-    Projet A : tester l'effet de ces valeurs sur la pertinence (note individuelle).
-    """
+    """Decoupe le texte en chunks avec recouvrement."""
     size = size or config.CHUNK_SIZE
     overlap = overlap or config.CHUNK_OVERLAP
-    raise NotImplementedError("TODO R1 : implementer chunk_text()")
+
+    # Normalisation : collapse whitespace et sauts de ligne multiples
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text).strip()
+
+    if not text:
+        return []
+
+    step = size - overlap
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        chunk = text[start : start + size].strip()
+        if chunk:
+            chunks.append(chunk)
+        start += step
+
+    return chunks
 
 
 def iter_corpus_files():
@@ -76,7 +136,8 @@ def main() -> None:
                         "path": str(path).replace("\\", "/"),
                         "type": path.suffix.lower().lstrip("."),
                         "position": position,
-                        # TODO R1 (bonus) : "lang": langdetect.detect(piece)
+                        "lang": detect_lang(piece),
+                        
                     },
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
