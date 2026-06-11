@@ -1,28 +1,46 @@
-"""Metriques : qualite de retrieval + exploitation.
-
-ROLE : R4 (DevOps / Observabilite).   ===> A COMPLETER PAR R4 <===
-
-A implementer (`TODO R4`) : au moins 1 metrique qualite + 1 metrique exploitation.
-  - Qualite      : score de similarite moyen, taux de refus.
-  - Exploitation : latence p50/p95, tokens, cout projete.
-  - (bonus)      : golden dataset de 10 Q/R + recall@k.
-
-Version de reference complete HORS-GIT : _reference/metrics.py.
-"""
-
-
 def percentile(values: list[float], p: float) -> float:
-    """Percentile (p en 0..100).
+    if not values:
+        return 0.0
 
-    TODO R4 : trier, calculer l'indice (len-1)*p/100, interpoler entre voisins.
-    """
-    raise NotImplementedError("TODO R4 : implementer percentile()")
+    values = sorted(values)
+    index = (len(values) - 1) * p / 100
+    lower = int(index)
+    upper = min(lower + 1, len(values) - 1)
+
+    if lower == upper:
+        return float(values[lower])
+
+    return float(
+        values[lower]
+        + (values[upper] - values[lower]) * (index - lower)
+    )
 
 
-def summarize(runs: list[dict]) -> dict:
-    """Agrege une liste de reponses /ask (best_score, refused, latency_ms, tokens).
+def summarize_metrics(runs: list[dict]) -> dict:
+    if not runs:
+        return {
+            "avg_best_score": 0,
+            "refusal_rate": 0,
+            "latency_p50_ms": 0,
+            "latency_p95_ms": 0,
+            "total_tokens": 0,
+        }
 
-    TODO R4 : renvoyer avg_best_score, refusal_rate, latency_p50_ms, latency_p95_ms,
-    total_tokens.
-    """
-    raise NotImplementedError("TODO R4 : implementer summarize()")
+    scores = [run.get("best_score", 0) for run in runs]
+    refusals = [1 if run.get("refused") else 0 for run in runs]
+    latencies = [run.get("latency_ms", 0) for run in runs]
+
+    total_tokens = 0
+
+    for run in runs:
+        tokens = run.get("tokens", {})
+        total_tokens += tokens.get("prompt", 0)
+        total_tokens += tokens.get("completion", 0)
+
+    return {
+        "avg_best_score": round(sum(scores) / len(scores), 4),
+        "refusal_rate": round(sum(refusals) / len(refusals), 4),
+        "latency_p50_ms": round(percentile(latencies, 50), 2),
+        "latency_p95_ms": round(percentile(latencies, 95), 2),
+        "total_tokens": total_tokens,
+    }

@@ -1,27 +1,13 @@
-# Pipeline RAG - Projet A (AssistKB Search) - dependances (gratuites uniquement)
-
-# API
 fastapi
 uvicorn[standard]
+python-dotenv
 pydantic
-
-# Vector store (impose projet A)
 qdrant-client
-
-# Embeddings locaux (aucune cle, aucun cout)
 sentence-transformers
-
-# Extraction de corpus heterogene
-pypdf
+numpy
+groq
+requests
 beautifulsoup4
 lxml
-requests
-
-# LLM free tier (au choix via LLM_PROVIDER)
-groq
-google-generativeai
-
-# Outils
-python-dotenv
-numpy
+pypdf
 langdetect

@@ -1,22 +1,8 @@
-# Secrets
 .env
-
-# Corpus telecharge (le seed dans socle-commun/corpus/seed reste committe)
-corpus/raw/
-corpus/chunks.jsonl
-
-# Code de reference (versions completes des etages R1/R2/R4) - NE PAS pousser.
-# A partager a l'equipe hors-git ; chacun complete SON amorce et commit lui-meme.
-_reference/
-
-# Python
 __pycache__/
-*.py[cod]
+*.pyc
 .venv/
 venv/
-.pytest_cache/
-
-# OS / IDE
+qdrant_storage/
+corpus/raw/
 .DS_Store
-.idea/
-.vscode/

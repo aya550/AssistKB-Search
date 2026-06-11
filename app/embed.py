@@ -1,63 +1,108 @@
-"""Embeddings : chunks.jsonl -> vecteurs normalises -> upsert dans le vector store.
-
-ROLE : R2 (Embeddings / Index).   ===> A COMPLETER PAR R2 <===
-
-Lance : python -m app.embed   (apres python -m app.ingest)
-
-L'ossature (chargement du modele, lecture des chunks) est fournie.
-A toi d'implementer le coeur (`TODO R2`) :
-  - encoder les textes en vecteurs NORMALISES (normalize_embeddings=True -> cosinus) ;
-  - creer la collection (config.EMBED_DIM = 384) puis upsert ;
-  - garantir l'IDEMPOTENCE : relancer ne duplique pas (ids = chunk_id) ;
-  - regler la taille de batch.
-
-NB projet A : l'adaptateur QdrantStore est deja fourni dans app/store.py (exemple).
-Version de reference complete HORS-GIT : _reference/embed.py.
-"""
 import json
 from pathlib import Path
 
-from . import config, store
+from app import config, store
 
 _model = None
 
 
 def load_model():
-    """Charge le modele sentence-transformers (cache apres 1er appel). (fourni)"""
     global _model
+
     if _model is None:
         from sentence_transformers import SentenceTransformer
 
-        print(f"[embed] chargement du modele {config.EMBED_MODEL} ...")
+        print(f"[R2] Chargement du modèle d'embeddings : {config.EMBED_MODEL}")
         _model = SentenceTransformer(config.EMBED_MODEL)
+
     return _model
 
 
 def read_chunks(path: str):
-    """Lit corpus/chunks.jsonl ligne par ligne. (fourni)"""
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"{path} introuvable. Lancez d'abord : python -m app.ingest")
-    with p.open(encoding="utf-8") as f:
-        for line in f:
+    chunks_path = Path(path)
+
+    if not chunks_path.exists():
+        raise FileNotFoundError(
+            f"Le fichier {path} est introuvable. "
+            "Demandez à R1 de générer corpus/chunks.jsonl avec app/ingest.py."
+        )
+
+    # Correction BOM Windows
+    with chunks_path.open("r", encoding="utf-8-sig") as file:
+        for line in file:
             line = line.strip()
+
             if line:
                 yield json.loads(line)
 
 
-def main() -> None:
+def main():
     chunks = list(read_chunks(config.CHUNKS_PATH))
+
     if not chunks:
-        print("[embed] aucun chunk a indexer.")
+        print("[R2] Aucun chunk trouvé.")
         return
 
-    model = load_model()          # noqa: F841  (utilise dans le TODO ci-dessous)
-    vs = store.get_store()        # noqa: F841
+    model = load_model()
+    vector_store = store.get_store()
 
-    # TODO R2 : encoder les textes (model.encode(..., normalize_embeddings=True)),
-    # creer la collection (vs.ensure_collection(config.EMBED_DIM)) puis vs.upsert(...)
-    # de maniere idempotente (ids = chunk_id pour ecraser au lieu de dupliquer).
-    raise NotImplementedError("TODO R2 : implementer l'encodage + upsert")
+    texts = [chunk["text"] for chunk in chunks]
+
+    ids = []
+    payloads = []
+
+    for index, chunk in enumerate(chunks):
+        chunk_id = chunk.get("chunk_id", index)
+
+        try:
+            chunk_id = int(chunk_id)
+        except (ValueError, TypeError):
+            chunk_id = index
+
+        ids.append(chunk_id)
+
+        metadata = chunk.get("metadata", {})
+
+        payload = dict(metadata)
+        payload["text"] = chunk["text"]
+        payload["chunk_id"] = chunk_id
+        payload["source"] = payload.get(
+            "source",
+            chunk.get("source", "unknown"),
+        )
+
+        payloads.append(payload)
+
+    print(f"[R2] Vectorisation de {len(texts)} chunks...")
+
+    vectors = model.encode(
+        texts,
+        batch_size=32,
+        show_progress_bar=True,
+        normalize_embeddings=True,
+    )
+
+    real_dimension = len(vectors[0])
+
+    if real_dimension != config.EMBED_DIM:
+        raise ValueError(
+            f"Dimension incorrecte : {real_dimension}. "
+            f"Dimension attendue : {config.EMBED_DIM}."
+        )
+
+    vector_store.ensure_collection(
+        vector_size=config.EMBED_DIM
+    )
+
+    vector_store.upsert(
+        ids=ids,
+        vectors=vectors.tolist(),
+        payloads=payloads,
+    )
+
+    print("[R2] Indexation terminée avec succès dans Qdrant.")
+    print(f"[R2] Nombre de chunks indexés : {len(chunks)}")
+    print(f"[R2] Collection Qdrant : {config.QDRANT_COLLECTION}")
 
 
 if __name__ == "__main__":

@@ -1,31 +1,33 @@
-# Stack projet A : Qdrant (vector store) + API RAG.
-# Demarrage : docker compose up -d
-# ROLE : R4 (DevOps / Observabilite).
-
 services:
   qdrant:
     image: qdrant/qdrant:latest
+    container_name: assistkb_qdrant
     ports:
-      - "6333:6333"   # API REST/HTTP
-      - "6334:6334"   # gRPC
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-    # TODO (R4) : ajouter un healthcheck propre et passer l'api en
-    # depends_on: { qdrant: { condition: service_healthy } }.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "timeout 3 bash -c '</dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api:
     build: .
-    env_file: .env
+    container_name: assistkb_api
+    env_file:
+      - .env
     environment:
-      # Dans le reseau compose, Qdrant est joignable par son nom de service.
       - QDRANT_URL=http://qdrant:6333
     ports:
       - "8000:8000"
     volumes:
-      - .:/app                                  # code + corpus montes en direct
-      - hf_cache:/root/.cache/huggingface       # cache modele (evite de re-telecharger)
+      - .:/app
+      - hf_cache:/root/.cache/huggingface
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
 
 volumes:
   qdrant_data:
