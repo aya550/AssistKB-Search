@@ -10,14 +10,17 @@ services:
       - "6334:6334"   # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
-    # TODO (R4) : ajouter un healthcheck propre et passer l'api en
-    # depends_on: { qdrant: { condition: service_healthy } }.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   api:
     build: .
     env_file: .env
     environment:
-      # Dans le reseau compose, Qdrant est joignable par son nom de service.
       - QDRANT_URL=http://qdrant:6333
     ports:
       - "8000:8000"
@@ -25,7 +28,8 @@ services:
       - .:/app                                  # code + corpus montes en direct
       - hf_cache:/root/.cache/huggingface       # cache modele (evite de re-telecharger)
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
 
 volumes:
   qdrant_data:

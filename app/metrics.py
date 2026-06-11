@@ -1,28 +1,57 @@
 """Metriques : qualite de retrieval + exploitation.
 
-ROLE : R4 (DevOps / Observabilite).   ===> A COMPLETER PAR R4 <===
+ROLE : R4 (DevOps / Observabilite).
 
-A implementer (`TODO R4`) : au moins 1 metrique qualite + 1 metrique exploitation.
-  - Qualite      : score de similarite moyen, taux de refus.
-  - Exploitation : latence p50/p95, tokens, cout projete.
-  - (bonus)      : golden dataset de 10 Q/R + recall@k.
+Usage :
+    from app.metrics import summarize
+    rapport = summarize(runs)   # runs = liste de dicts retournes par /ask
 
-Version de reference complete HORS-GIT : _reference/metrics.py.
+Chaque element de `runs` doit contenir :
+    - best_score   (float)  : score du chunk le mieux classe
+    - refused      (bool)   : True si l'API a refuse de repondre
+    - latency_ms   (float)  : latence totale de la requete
+    - tokens       (int)    : total prompt + completion tokens
 """
 
 
 def percentile(values: list[float], p: float) -> float:
-    """Percentile (p en 0..100).
-
-    TODO R4 : trier, calculer l'indice (len-1)*p/100, interpoler entre voisins.
-    """
-    raise NotImplementedError("TODO R4 : implementer percentile()")
+    """Percentile par interpolation lineaire (p en 0..100)."""
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    idx = (n - 1) * p / 100.0
+    lo = int(idx)
+    hi = lo + 1
+    frac = idx - lo
+    if hi >= n:
+        return sorted_vals[-1]
+    return sorted_vals[lo] + frac * (sorted_vals[hi] - sorted_vals[lo])
 
 
 def summarize(runs: list[dict]) -> dict:
-    """Agrege une liste de reponses /ask (best_score, refused, latency_ms, tokens).
+    """Agrege une liste de reponses /ask et retourne les metriques cles."""
+    if not runs:
+        return {}
 
-    TODO R4 : renvoyer avg_best_score, refusal_rate, latency_p50_ms, latency_p95_ms,
-    total_tokens.
-    """
-    raise NotImplementedError("TODO R4 : implementer summarize()")
+    scores = [r["best_score"] for r in runs if not r.get("refused", False)]
+    latencies = [r["latency_ms"] for r in runs]
+    tokens = [r.get("tokens", 0) for r in runs]
+    n_refused = sum(1 for r in runs if r.get("refused", False))
+
+    # Cout projete : tarif Groq llama-3.1-8b-instant (gratuit tier = 0, on simule OpenAI gpt-4o-mini)
+    # $0.15 / 1M tokens input + $0.60 / 1M tokens output (approx 50/50)
+    avg_tokens = sum(tokens) / len(tokens) if tokens else 0
+    cost_per_1k = avg_tokens * 1000 * (0.15 + 0.60) / 2 / 1_000_000
+
+    return {
+        "n_questions": len(runs),
+        "avg_best_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+        "refusal_rate_pct": round(100 * n_refused / len(runs), 1),
+        "latency_p50_ms": round(percentile(latencies, 50), 1),
+        "latency_p95_ms": round(percentile(latencies, 95), 1),
+        "avg_tokens": round(avg_tokens, 1),
+        "projected_cost_usd_per_1k_questions": round(cost_per_1k, 4),
+    }
