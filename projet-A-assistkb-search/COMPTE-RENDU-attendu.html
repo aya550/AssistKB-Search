@@ -2298,7 +2298,7 @@
         <li>
           Aya SGHAIER SLIM - R1 Data / Ingestion + R4 DevOps / Observabilité
         </li>
-        <li>Danielle - R2 Embeddings / Index</li>
+        <li>Danielle Jamila KOAGNE NGANKAM - R2 Embeddings / Index</li>
         <li>Jacqueline MAPENZI - R3 Retrieval / LLM</li>
         <li>
           <strong>Projet</strong> : A - AssistKB Search (vector store Qdrant)
@@ -2341,6 +2341,43 @@ flowchart LR
         <li>
           <strong>R1 ingest.py</strong> : lit les fichiers bruts, extrait le
           texte, découpe en chunks avec métadonnées
+        </li>
+        <li>
+          <h3 id="r2-contributions-inline">R2 — Embeddings et stockage (contributions)</h3>
+          <p>Responsable R2 : implémentation de la vectorisation des chunks et de
+            l'adaptateur Qdrant.</p>
+          <ul>
+            <li><strong>Fichiers</strong> : <code>app/embed.py</code> et
+              <code>app/store.py</code>.</li>
+            <li><strong>Implémentation</strong> :
+              <ul>
+                <li><code>app/embed.py</code> : charge le modèle
+                  <code>sentence-transformers/all-MiniLM-L6-v2</code>, encode les
+                  textes de <code>corpus/chunks.jsonl</code> avec
+                  <code>normalize_embeddings=True</code> (dimension attendue =
+                  384) et prépare les payloads métadonnées pour l'indexation.</li>
+                <li><code>app/store.py</code> : adaptateur Qdrant fournissant
+                  <code>ensure_collection</code>, <code>upsert</code> et
+                  <code>search</code> ; collection <code>assistkb</code>,
+                  distance = COSINE.</li>
+              </ul>
+            </li>
+            <li><strong>Tests effectués</strong> :
+              <ul>
+                <li>Vérification via l'API Qdrant : collection
+                  <code>assistkb</code> — <code>points_count=16</code>,
+                  <code>vectors.size=384</code>, distance COSINE.</li>
+                <li>Recherche d'intégration : utilisation du vecteur du point
+                  0 pour effectuer une recherche — top hits pertinents (ex. IDs
+                  [0,1,14,7,2], scores ≈ [1.00, 0.73, 0.59, 0.51, 0.50]).</li>
+                <li>Scripts de test locaux : <code>scripts/test_embed.py</code> et
+                  <code>scripts/test_search.py</code> (vérifications end-to-end).</li>
+              </ul>
+            </li>
+            <li><strong>Remarques</strong> : embeddings normalisés (cosine),
+              <code>EMBED_DIM = 384</code>, pipeline compatible avec le seuil de
+              refus défini dans le projet.</li>
+          </ul>
         </li>
         <li>
           <strong>R2 embed.py</strong> : vectorise chaque chunk via
