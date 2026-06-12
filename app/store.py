@@ -28,7 +28,7 @@ class VectorStore(ABC):
     """Contrat commun a tous les vector stores (Qdrant ici, mais interchangeable)."""
 
     @abstractmethod
-    def ensure_collection(self, dim: int) -> None:
+    def ensure_collection(self, vector_size: int = config.EMBED_DIM) -> None:
         """Cree la collection si elle n'existe pas (distance cosinus)."""
 
     @abstractmethod
@@ -54,14 +54,14 @@ class QdrantStore(VectorStore):
         self.client = QdrantClient(url=url or config.QDRANT_URL)
         self.collection = collection or config.QDRANT_COLLECTION
 
-    def ensure_collection(self, dim: int) -> None:
+    def ensure_collection(self, vector_size: int = config.EMBED_DIM) -> None:
         from qdrant_client.models import Distance, VectorParams
 
         existing = {c.name for c in self.client.get_collections().collections}
         if self.collection not in existing:
             self.client.create_collection(
                 collection_name=self.collection,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             )
 
     def upsert(self, ids, vectors, payloads) -> None:
