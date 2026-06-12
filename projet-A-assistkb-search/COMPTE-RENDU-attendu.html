@@ -2303,7 +2303,12 @@
         <li>
           <strong>Projet</strong> : A - AssistKB Search (vector store Qdrant)
         </li>
-        <li><strong>Dépôt GitHub</strong> : https://github.com/___________</li>
+        <li>
+          <strong>Dépôt GitHub</strong> :
+          <a href="https://github.com/aya550/AssistKB-Search"
+            >https://github.com/aya550/AssistKB-Search</a
+          >
+        </li>
       </ul>
       <hr />
       <h2 id="2-objectif">2. Objectif</h2>
@@ -2467,16 +2472,21 @@ flowchart LR
           </tr>
           <tr>
             <td>seuil de refus</td>
-            <td>0.35</td>
+            <td>0.45</td>
             <td>
-              En dessous de 0.35 en cosinus normalisé, le passage est trop
-              éloigné pour être fiable
+              Réglé empiriquement (cf. §7) : à 0.45, le système refuse 100 % des
+              questions hors-sujet testées, là où 0.35 laissait passer du
+              hors-contexte. On privilégie la précision (anti-hallucination) au
+              rappel — un refus vaut mieux qu'une réponse inventée.
             </td>
           </tr>
           <tr>
             <td>LLM</td>
-            <td>___________</td>
-            <td>___________</td>
+            <td>Groq — llama-3.1-8b-instant</td>
+            <td>
+              Free tier, génération très rapide (&lt; 1 s), suffisant pour une
+              synthèse citée à partir du contexte fourni
+            </td>
           </tr>
         </tbody>
       </table>
@@ -2508,37 +2518,61 @@ flowchart LR
           </tr>
           <tr>
             <td>Score similarité moyen (top-k)</td>
-            <td>_____</td>
-            <td>À compléter après lancement de l'API</td>
+            <td>0.53</td>
+            <td>Moyenne du best_score sur 7 questions test (4 pertinentes, 3 hors-sujet)</td>
           </tr>
           <tr>
             <td>Taux de refus (questions hors corpus)</td>
-            <td>_____ %</td>
-            <td>À compléter</td>
+            <td>57 %</td>
+            <td>
+              4/7 refus : 3/3 hors-sujet (100 %) + 1 question pertinente mais
+              courte (« latence RAG », score 0.39)
+            </td>
           </tr>
           <tr>
             <td>Latence p50 / p95</td>
-            <td>_____ / _____ ms</td>
-            <td>À compléter</td>
+            <td>486 / 1073 ms</td>
+            <td>
+              Refus &lt; 0,5 s (aucun appel LLM) ; réponse complète ~1 s (Groq très rapide)
+            </td>
           </tr>
           <tr>
             <td>Tokens moyens (prompt + completion)</td>
-            <td>_____</td>
-            <td>À compléter</td>
+            <td>340</td>
+            <td>0 pour les refus, ~250-450 pour les réponses citées</td>
           </tr>
           <tr>
             <td>Coût projeté / 1000 questions</td>
-            <td>_____ USD</td>
-            <td>À compléter via app/metrics.py</td>
+            <td>0.13 USD</td>
+            <td>Simulé (tarif gpt-4o-mini) ; coût réel = 0 $ sur le free tier Groq</td>
           </tr>
         </tbody>
       </table>
-      <blockquote>
-        <p>
-          Joindre captures d'écran de 2-3 échanges (une réponse citée + un
-          refus).
-        </p>
-      </blockquote>
+      <p>
+        Captures d'écran de l'API en fonctionnement (via l'interface
+        <code>/docs</code>) :
+      </p>
+      <figure>
+        <img src="images/reponse-citee.png" alt="Réponse citée par l'API" />
+        <figcaption>
+          Réponse citée : l'API répond et indique sa source au format
+          [source: fichier #chunk_id].
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="images/refus-horssujet.png" alt="Refus sur une question hors-sujet" />
+        <figcaption>
+          Refus : sur une question hors-sujet, le best_score est sous le seuil
+          0.45 → l'API refuse (refused=true, 0 token consommé, pas d'appel LLM).
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="images/qdrant-collection.png" alt="Collection Qdrant peuplée" />
+        <figcaption>
+          Collection Qdrant « assistkb » : 16 points, dimension 384, distance
+          Cosine (vue depuis le dashboard Qdrant).
+        </figcaption>
+      </figure>
       <hr />
       <h2 id="8-difficultes-et-limites">8. Difficultés et limites</h2>
       <ul>
@@ -2558,6 +2592,22 @@ flowchart LR
           <code>ingest.py</code> est relancé, <code>chunks.jsonl</code> est
           réécrit intégralement (idempotence assurée côté Qdrant par R2, pas
           côté ingestion).
+        </li>
+        <li>
+          <strong>Le seuil seul ne sépare pas parfaitement pertinent et
+          hors-sujet</strong> : les scores se chevauchent. Exemple mesuré, la
+          question pertinente « Qu'est-ce que Qdrant ? » score
+          <strong>0.427</strong>, quasi identique à la question hors-sujet
+          « recette de tarte aux pommes » (<strong>0.425</strong>). Aucun seuil
+          ne peut donc les distinguer sur ce corpus. Pistes : enrichir le corpus
+          (<code>corpus/raw</code>) pour densifier l'espace vectoriel, et ajouter
+          un <strong>reranking</strong> par cross-encoder (cf. §10).
+        </li>
+        <li>
+          <strong>Sensibilité à la formulation</strong> : une question courte
+          (« Qu'est-ce que Qdrant ? », 0.427) est refusée alors que sa version
+          longue (« …et à quoi sert-il ? », 0.455) passe. Un embedding plus
+          riche augmente la similarité.
         </li>
       </ul>
       <hr />
