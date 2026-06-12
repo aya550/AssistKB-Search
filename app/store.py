@@ -28,7 +28,7 @@ class VectorStore(ABC):
     """Contrat commun a tous les vector stores (Qdrant ici, mais interchangeable)."""
 
     @abstractmethod
-    def ensure_collection(self, dim: int) -> None:
+    def ensure_collection(self, vector_size: int = config.EMBED_DIM) -> None:
         """Cree la collection si elle n'existe pas (distance cosinus)."""
 
     @abstractmethod
@@ -54,14 +54,14 @@ class QdrantStore(VectorStore):
         self.client = QdrantClient(url=url or config.QDRANT_URL)
         self.collection = collection or config.QDRANT_COLLECTION
 
-    def ensure_collection(self, dim: int) -> None:
+    def ensure_collection(self, vector_size: int = config.EMBED_DIM) -> None:
         from qdrant_client.models import Distance, VectorParams
 
         existing = {c.name for c in self.client.get_collections().collections}
         if self.collection not in existing:
             self.client.create_collection(
                 collection_name=self.collection,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             )
 
     def upsert(self, ids, vectors, payloads) -> None:
@@ -74,12 +74,13 @@ class QdrantStore(VectorStore):
         self.client.upsert(collection_name=self.collection, points=points)
 
     def search(self, vector, top_k: int) -> list[SearchHit]:
-        results = self.client.search(
+        # qdrant-client >= 1.12 : .search() est remplace par .query_points()
+        results = self.client.query_points(
             collection_name=self.collection,
-            query_vector=list(vector),
+            query=list(vector),
             limit=top_k,
             with_payload=True,
-        )
+        ).points
         hits: list[SearchHit] = []
         for r in results:
             payload = dict(r.payload or {})
