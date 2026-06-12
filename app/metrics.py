@@ -10,7 +10,7 @@ Chaque element de `runs` doit contenir :
     - best_score   (float)  : score du chunk le mieux classe
     - refused      (bool)   : True si l'API a refuse de repondre
     - latency_ms   (float)  : latence totale de la requete
-    - tokens       (int)    : total prompt + completion tokens
+    - tokens       (int | dict) : total, ou {"prompt": .., "completion": ..} (format /ask)
 """
 
 
@@ -31,6 +31,13 @@ def percentile(values: list[float], p: float) -> float:
     return sorted_vals[lo] + frac * (sorted_vals[hi] - sorted_vals[lo])
 
 
+def _total_tokens(t) -> int:
+    """Total de tokens, que /ask renvoie un entier ou un dict {prompt, completion}."""
+    if isinstance(t, dict):
+        return int(t.get("prompt", 0)) + int(t.get("completion", 0))
+    return int(t or 0)
+
+
 def summarize(runs: list[dict]) -> dict:
     """Agrege une liste de reponses /ask et retourne les metriques cles."""
     if not runs:
@@ -38,7 +45,7 @@ def summarize(runs: list[dict]) -> dict:
 
     scores = [r["best_score"] for r in runs if not r.get("refused", False)]
     latencies = [r["latency_ms"] for r in runs]
-    tokens = [r.get("tokens", 0) for r in runs]
+    tokens = [_total_tokens(r.get("tokens", 0)) for r in runs]
     n_refused = sum(1 for r in runs if r.get("refused", False))
 
     # Cout projete : tarif Groq llama-3.1-8b-instant (gratuit tier = 0, on simule OpenAI gpt-4o-mini)

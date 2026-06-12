@@ -39,7 +39,10 @@ CHUNK_OVERLAP = _int("CHUNK_OVERLAP", 120)
 
 # --- Retrieval -------------------------------------------------------------
 TOP_K = _int("TOP_K", 5)
-SIMILARITY_THRESHOLD = _float("SIMILARITY_THRESHOLD", 0.35)
+# Seuil regle empiriquement (cf. compte rendu, section R3) : 0.45 = meilleur
+# compromis pertinence/refus sur le corpus seed (bloque le hors-sujet sans
+# trop sacrifier les questions limites). Surchargeable via .env.
+SIMILARITY_THRESHOLD = _float("SIMILARITY_THRESHOLD", 0.45)
 REFUSAL_MESSAGE = os.getenv(
     "REFUSAL_MESSAGE",
     "Je ne dispose pas d'information suffisante dans le corpus pour repondre "
